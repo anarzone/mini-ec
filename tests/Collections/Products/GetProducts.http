@@ -1,0 +1,15 @@
+### GET request to example server
+GET https://mini-ec.test/api/products
+  ?XDEBUG_SESSION=1
+  &q=laptop
+  &brand=Apple
+  &price_min=500
+  &categories=['laptop','technology']
+  &attributes=[],
+  &page=2
+  &limit=10
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer YOUR_API_TOKEN_HERE
+###
+
