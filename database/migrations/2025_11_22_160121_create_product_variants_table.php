@@ -20,6 +20,7 @@ return new class extends Migration
             $table->integer('weight_g')->nullable();
             $table->boolean('is_active')->default(true);
             $table->foreignIdFor(Product::class);
+            $table->json('attributes');
             $table->timestamp('created_at', 6);
             $table->timestamp('updated_at', 6);
             $table->softDeletes();

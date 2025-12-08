@@ -7,6 +7,8 @@ use App\Http\Requests\ProductRequest;
 use App\Models\Product;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 
 class ProductsController extends Controller
 {
@@ -16,32 +18,87 @@ class ProductsController extends Controller
 
     public function index(ProductFilterFormRequest $request): JsonResponse
     {
-        return new JsonResponse(
-            data: $this->productService->getProducts($request)
-        );
+        $products = $this->productService->getProducts($request);
+
+        return response()->json([
+            'message' => "Products retrieved successfully",
+            "data" => $products,
+        ]);
     }
 
     public function store(ProductRequest $request)
     {
-        return Product::create($request->validated());
+        $data = $request->validated();
+
+        // Generate slug from title if not provided
+        if (empty($data['slug'])) {
+            $data['slug'] = Str::slug($data['title']);
+        }
+
+        $product = \DB::transaction(function () use ($data) {
+            // Create product
+            $product = Product::create(collect($data)->except(['variants', 'categories'])->toArray());
+
+            // Create variants if provided
+            if (isset($data['variants'])) {
+                foreach ($data['variants'] as $variantData) {
+                    $product->variants()->create($variantData);
+                }
+            }
+
+            // Sync categories if provided
+            if (isset($data['categories'])) {
+                $product->categories()->sync($data['categories']);
+            }
+
+            return $product;
+        });
+
+        return response()->json([
+            'message' => 'Product created successfully',
+            'data' => $product->load(['variants', 'categories']),
+        ], Response::HTTP_CREATED);
     }
 
     public function show(Product $product)
     {
-        return $product;
+        return response()->json([
+            "message" => "Product retrieved successfully",
+            "data" => $product->load(['variants', 'categories']),
+        ]);
     }
 
     public function update(ProductRequest $request, Product $product)
     {
-        $product->update($request->validated());
+        $data = $request->validated();
 
-        return $product;
+        if (empty($data['slug']) && isset($data['title'])) {
+            $data['slug'] = Str::slug($data['title']);
+        }
+
+        $product->update($data);
+
+        // Sync categories if provided
+        if (isset($data['categories'])) {
+            $product->categories()->sync($data['categories']);
+        }
+
+        return response()->json([
+            "message" => "Product updated successfully",
+            "data" => $product->load(['variants', 'categories'])
+        ]);
     }
 
     public function destroy(Product $product)
     {
-        $product->delete();
+        \DB::transaction(function () use ($product) {
+            // Delete all variants first (if not using cascade)
+            $product->variants()->delete();
 
-        return response()->json();
+            // Delete the product
+            $product->delete();
+        });
+
+        return response()->json(["message" => "Product deleted successfully"], Response::HTTP_OK);
     }
 }

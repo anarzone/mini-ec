@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class ProductFilterFormRequest extends FormRequest
 {
@@ -11,7 +12,12 @@ class ProductFilterFormRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
+    }
+
+    public function expectsJson(): bool
+    {
+        return true;
     }
 
     /**
@@ -37,5 +43,25 @@ class ProductFilterFormRequest extends FormRequest
             'attributes.*' => ['array', 'max:20'],
             'attributes.*.*' => ['string', 'max:100'],
         ];
+    }
+
+    /**
+     * Configure the validator instance.
+     *
+     * @param Validator $validator
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function ($validator) {
+            $allowedKeys = ['q', 'categories', 'brands', 'price_min', 'price_max', 'attributes', 'XDEBUG_SESSION', 'page'];
+            $extraKeys = array_diff(array_keys($this->all()), $allowedKeys);
+
+            if (count($extraKeys) > 0) {
+                $validator->errors()->add(
+                    'invalid_parameters',
+                    'The following parameters are not allowed: ' . implode(', ', $extraKeys)
+                );
+            }
+        });
     }
 }

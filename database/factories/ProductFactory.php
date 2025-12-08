@@ -31,7 +31,7 @@ class ProductFactory extends Factory
         $title = $this->faker->words(3, true);
         return [
             'title' => ucfirst($title),
-            'description' => $this->faker->paragraph(3),
+            'description' => $this->faker->paragraph(),
             'slug' => Str::slug($title),
             'brand' => $this->faker->company(),
             'attributes' => [

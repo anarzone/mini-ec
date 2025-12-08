@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_variants', function (Blueprint $table) {
-            $table->json('attributes')->nullable()->after('product_id');
-        });
+        // Add generated column that extracts JSON values as text
+        DB::statement("
+            ALTER TABLE products
+            ADD COLUMN attributes_searchable TEXT
+            GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.*'))) STORED
+        ");
     }
 
     /**
@@ -21,8 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('product_variants', function (Blueprint $table) {
-            $table->dropColumn('attributes');
-        });
+        DB::statement('ALTER TABLE products DROP COLUMN attributes_searchable');
     }
 };
