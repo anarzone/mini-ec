@@ -8,13 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -28,9 +22,16 @@ jobs:
           composer global require laravel/forge-cli
           echo "$HOME/.composer/vendor/bin" >> $GITHUB_PATH
 
-      - name: Deploy Site
+      - name: Debug Forge resources
         run: |
-          forge server:switch your-server-name
-          forge deploy your-site-name.com
+          forge --version
+          forge servers
+        env:
+          FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
+
+      - name: Deploy
+        run: |
+          forge server:switch 906819
+          forge deploy mini-ec.on-forge.com
         env:
           FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
