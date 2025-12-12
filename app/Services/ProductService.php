@@ -2,130 +2,114 @@
 
 namespace App\Services;
 
+use App\Dtos\ProductFilterDto;
 use App\Models\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Builder;
 
-class ProductService
+readonly class ProductService
 {
+    public function __construct(private FacetService $facetService) {}
+
     /**
-     * Get products with filters
+     * Get products with filters and optional facets
      * Example: $q = laptop, $brands = ['Apple'], $priceMin = 50000, $attributes = ['processor' => 'M3 Pro']
+     *
+     * @return array{products: LengthAwarePaginator, facets: array|null}
      */
-    public function getProducts(Request $request): LengthAwarePaginator
+    public function getProducts(ProductFilterDto $productFilterDto): array
     {
-        $q = $request->get('q');
-        $brands = $request->get('brands');
-        $categoryId = $request->get('category_id');
-        $productAttributes = $request->get('product_attributes');
-        $variantAttributes = $request->get('variant_attributes');
-        $priceMin = $request->get('price_min');
-        $priceMax = $request->get('price_max');
+        $q = $productFilterDto->q;
 
         // Use Scout search if query provided, otherwise start with query builder
         if ($q) {
-            $products = Product::search($q)->query(function ($query) use (
-                $brands,
-                $categoryId,
-                $productAttributes,
-                $variantAttributes,
-                $priceMin,
-                $priceMax
-            ) {
-                $query->with(['variants', 'categories']);
-
-                // Filter by brands
-                if ($brands) {
-                    $query->whereIn('brand', $brands);
-                }
-
-                // Filter by category
-                if ($categoryId) {
-                    $query->whereHas('categories', function ($subQuery) use ($categoryId) {
-                        $subQuery->where('categories.id', $categoryId);
-                    });
-                }
-
-                // Filter by product attributes (shared specs like processor, material)
-                if ($productAttributes) {
-                    foreach ($productAttributes as $key => $value) {
-                        $query->whereJsonContains("attributes->$key", $value);
-                    }
-                }
-
-                // Filter by variant attributes (color, size, RAM, storage)
-                if ($variantAttributes) {
-                    $query->whereHas('variants', function ($subQuery) use ($variantAttributes) {
-                        foreach ($variantAttributes as $key => $value) {
-                            $subQuery->whereJsonContains("attributes->$key", $value);
-                        }
-                    });
-                }
-
-                // Filter by price range (on variants)
-                if ($priceMin) {
-                    $query->whereHas('variants', function ($subQuery) use ($priceMin) {
-                        $subQuery->where('price_cents', '>=', $priceMin);
-                    });
-                }
-
-                if ($priceMax) {
-                    $query->whereHas('variants', function ($subQuery) use ($priceMax) {
-                        $subQuery->where('price_cents', '<=', $priceMax);
-                    });
-                }
+            $products = Product::search($q)->query(function ($query) use ($productFilterDto) {
+                $this->getProductsQuery($productFilterDto, $query);
             });
+
+            // Get all matching product IDs from Scout (for facets)
+            $productIds = $products->keys()->all();
+
+            // Build Eloquent query for facets using the Scout result IDs
+            $facetQuery = Product::query()->whereIn('products.id', $productIds);
+            $facets = $this->facetService->generateFacets($facetQuery);
         } else {
             // No search query, use regular Eloquent query
-            $products = Product::query()->with(['variants', 'categories']);
+            $products = $this->getProductsQuery($productFilterDto);
 
-            // Filter by brands
-            if ($brands) {
-                $products->whereIn('brand', $brands);
-            }
+            // Use cloned query for facets
+            $facets = $this->facetService->generateFacets(clone $products);
+        }
 
-            // Filter by category
-            if ($categoryId) {
-                $products->whereHas('categories', function ($query) use ($categoryId) {
-                    $query->where('categories.id', $categoryId);
-                });
-            }
+        $paginatedProducts = $products->paginate(perPage: 20);
 
-            // Filter by product attributes (shared specs like processor, material)
-            if ($productAttributes) {
-                foreach ($productAttributes as $key => $value) {
+        return [
+            'products' => $paginatedProducts,
+            'facets' => $facets,
+        ];
+    }
+
+    public function getProductsQuery(ProductFilterDto $dto, ?Builder $query = null): Builder
+    {
+        $brands = $dto->brands;
+        $categoryId = $dto->categoryId;
+        $productAttributes = $dto->productAttributes;
+        $variantAttributes = $dto->variantAttributes;
+        $priceMin = $dto->priceMin;
+        $priceMax = $dto->priceMax;
+
+        if ($query) {
+            $products = $query;
+        } else {
+            $products = Product::query();
+        }
+
+        $products->with(['variants', 'categories']);
+
+        if ($brands) {
+            $products->whereIn('brand', $brands);
+        }
+
+        if ($categoryId) {
+            $products->whereHas('categories', function ($query) use ($categoryId) {
+                $query->where('categories.id', $categoryId);
+            });
+        }
+
+        if ($productAttributes) {
+            foreach ($productAttributes as $key => $value) {
+                if (is_string($value)) {
+                    $products->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.{$key}'))) = ?", [strtolower($value)]);
+                } else {
                     $products->whereJsonContains("attributes->$key", $value);
                 }
             }
-
-            // Filter by variant attributes (color, size, RAM, storage)
-            if ($variantAttributes) {
-                $products->whereHas('variants', function ($query) use ($variantAttributes) {
-                    foreach ($variantAttributes as $key => $value) {
-                        $query->whereJsonContains("attributes->$key", $value);
-                    }
-                });
-            }
-
-            // Filter by price range (on variants)
-            if ($priceMin) {
-                $products->whereHas('variants', function ($query) use ($priceMin) {
-                    $query->where('price_cents', '>=', $priceMin);
-                });
-            }
-
-            if ($priceMax) {
-                $products->whereHas('variants', function ($query) use ($priceMax) {
-                    $query->where('price_cents', '<=', $priceMax);
-                });
-            }
         }
 
-        return $products->paginate(perPage: 20);
-    }
+        if ($variantAttributes) {
+            $products->whereHas('variants', function ($query) use ($variantAttributes) {
+                foreach ($variantAttributes as $key => $value) {
+                    if (is_string($value)) {
+                        $query->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.{$key}'))) = ?", [strtolower($value)]);
+                    } else {
+                        $query->whereJsonContains("attributes->$key", $value);
+                    }
+                }
+            });
+        }
 
-    public function saveProduct()
-    {
-        
+        if ($priceMin) {
+            $products->whereHas('variants', function ($query) use ($priceMin) {
+                $query->where('price_cents', '>=', $priceMin);
+            });
+        }
+
+        if ($priceMax) {
+            $products->whereHas('variants', function ($query) use ($priceMax) {
+                $query->where('price_cents', '<=', $priceMax);
+            });
+        }
+
+        return $products;
     }
 }

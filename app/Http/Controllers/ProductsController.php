@@ -12,18 +12,22 @@ use Illuminate\Support\Str;
 
 class ProductsController extends Controller
 {
-    public function __construct(private readonly ProductService $productService)
-    {
-    }
+    public function __construct(private readonly ProductService $productService) {}
 
     public function index(ProductFilterFormRequest $request): JsonResponse
     {
-        $products = $this->productService->getProducts($request);
+        $result = $this->productService->getProducts($request->toDto());
 
-        return response()->json([
-            'message' => "Products retrieved successfully",
-            "data" => $products,
-        ]);
+        $response = [
+            'message' => 'Products retrieved successfully',
+            'data' => $result['products'],
+        ];
+
+        if ($result['facets'] !== null) {
+            $response['facets'] = $result['facets'];
+        }
+
+        return response()->json($response);
     }
 
     public function store(ProductRequest $request)
@@ -63,8 +67,8 @@ class ProductsController extends Controller
     public function show(Product $product)
     {
         return response()->json([
-            "message" => "Product retrieved successfully",
-            "data" => $product->load(['variants', 'categories']),
+            'message' => 'Product retrieved successfully',
+            'data' => $product->load(['variants', 'categories']),
         ]);
     }
 
@@ -84,8 +88,8 @@ class ProductsController extends Controller
         }
 
         return response()->json([
-            "message" => "Product updated successfully",
-            "data" => $product->load(['variants', 'categories'])
+            'message' => 'Product updated successfully',
+            'data' => $product->load(['variants', 'categories']),
         ]);
     }
 
@@ -99,6 +103,6 @@ class ProductsController extends Controller
             $product->delete();
         });
 
-        return response()->json(["message" => "Product deleted successfully"], Response::HTTP_OK);
+        return response()->json(['message' => 'Product deleted successfully'], Response::HTTP_OK);
     }
 }
