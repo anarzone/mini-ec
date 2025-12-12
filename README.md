@@ -1,5 +1,7 @@
 # Mini E-Commerce API
 
+[![Laravel Forge Site Deployment Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fforge.laravel.com%2Fsite-badges%2Ffe5792fa-d439-4826-88b5-bee206ac5700&style=plastic)](https://forge.laravel.com/anar-hagverdiyev-9br/blessed-summit/2963987)
+
 A Laravel 12 e-commerce API with advanced product search and filtering capabilities.
 
 ## Features
